@@ -1,0 +1,6 @@
+python-telegram-bot[job-queue]==21.7
+qbittorrent-api==2024.10.68
+psutil
+pyrogram
+tgcrypto
+python-dotenv

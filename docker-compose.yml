@@ -1,0 +1,11 @@
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram_bot
+    env_file:
+      - .env
+    volumes:
+      - /path/to/downloads/folder:/downloads
+    restart: unless-stopped

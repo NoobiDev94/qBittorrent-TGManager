@@ -211,38 +211,43 @@ async def monitor_torrents(context: CallbackContext):
 
 # Função para dividir e enviar arquivos compactados
 async def send_completed_torrent_parts(context, torrent_name, files_path):
-    # Cria uma pasta temporária para o torrent
-    temp_folder = os.path.join("/tmp", torrent_name)
-    os.makedirs(temp_folder, exist_ok=True)
+    try:
+        # Cria uma pasta temporária para o torrent
+        temp_folder = os.path.join("/tmp", torrent_name.replace(" ", "_"))
+        os.makedirs(temp_folder, exist_ok=True)
 
-    # Copia os arquivos para a pasta temporária
-    for file in os.listdir(files_path):
-        original_path = os.path.join(files_path, file)
-        if os.path.isfile(original_path):
-            shutil.copy2(original_path, temp_folder)
+        # Copia os arquivos para a pasta temporária
+        for file in os.listdir(files_path):
+            original_path = os.path.join(files_path, file)
+            if os.path.isfile(original_path):
+                shutil.copy2(original_path, temp_folder)
 
-    # Compacta a pasta em partes de 2GB
-    archive_name = os.path.join("/tmp", f"{torrent_name}.tar.gz")
-    split_command = f"tar -czf - -C /tmp {torrent_name} | split -b 2G - {archive_name}.part"
-    subprocess.run(split_command, shell=True)
+        # Compacta a pasta em partes de 2GB
+        archive_name = os.path.join("/tmp", f"{torrent_name.replace(' ', '_')}.tar.gz")
+        split_command = f"tar -czf - -C /tmp {torrent_name.replace(' ', '_')} | split -b 2G - {archive_name}.part"
+        subprocess.run(split_command, shell=True, check=True)
 
-    # Envia cada parte para o canal no Telegram
-    part_num = 1
-    part_pattern = f"{archive_name}.part*"
-    for part_file in sorted(glob.glob(part_pattern)):
-        with open(part_file, "rb") as file_part:
-            await context.bot.send_document(chat_id=FILE_CHAT_ID, document=InputFile(file_part),
-                                            caption=f"{torrent_name} - Parte {part_num}")
-        part_num += 1
+        # Envia cada parte para o canal no Telegram
+        part_num = 1
+        part_pattern = f"{archive_name}.part*"
+        for part_file in sorted(glob.glob(part_pattern)):
+            with open(part_file, "rb") as file_part:
+                await context.bot.send_document(chat_id=FILE_CHAT_ID, document=InputFile(file_part),
+                                                caption=f"{torrent_name} - Parte {part_num}")
+            part_num += 1
 
-    # Envia uma mensagem final de confirmação
-    await context.bot.send_message(chat_id=FILE_CHAT_ID,
-                                   text=f"O torrent '{torrent_name}' foi compactado e enviado com sucesso.")
-
-    # Remove arquivos temporários
-    shutil.rmtree(temp_folder)
-    for part_file in glob.glob(part_pattern):
-        os.remove(part_file)
+        # Envia uma mensagem final de confirmação
+        await context.bot.send_message(chat_id=FILE_CHAT_ID,
+                                       text=f"O torrent '{torrent_name}' foi compactado e enviado com sucesso.")
+    except subprocess.CalledProcessError as e:
+        print(f"Erro ao executar o comando de compactação/divisão: {e}")
+    except Exception as ex:
+        print(f"Erro durante o envio das partes: {ex}")
+    finally:
+        # Remove arquivos temporários
+        shutil.rmtree(temp_folder, ignore_errors=True)
+        for part_file in glob.glob(part_pattern):
+            os.remove(part_file)
 
 # Função principal que configura e inicia o bot
 def main():

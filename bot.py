@@ -1,6 +1,8 @@
+import ssl
 from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, CallbackContext
 import os
+import platform
 import time
 import psutil
 import shutil
@@ -101,6 +103,8 @@ async def send_or_edit_message(bot, message, torrent_name):
 def format_time(seconds):
     return time.strftime("%H:%M:%S", time.gmtime(seconds))
 
+ssl._create_default_https_context = ssl._create_unverified_context
+
 # Função que trata o comando /start
 async def start_download(update: Update, context: CallbackContext):
     print("Comando /start recebido")
@@ -132,11 +136,11 @@ async def monitor_torrents(context: CallbackContext):
         # Verifica se o torrent está sem atividade de upload há mais de 5s
         if torrent.upspeed == 0 and torrent.state == 'stalledUP':
             last_uploaded = torrent_last_uploaded.get(torrent.name, 0)
-            # print(f"Monitorando inatividade do torrent: {torrent.name}")
-            # print(f"Tempo atual: {time.time()}, Último upload: {last_uploaded}, Diferença: {time.time() - last_uploaded}")
+            #print(f"Monitorando inatividade do torrent: {torrent.name}")
+            #print(f"Tempo atual: {time.time()}, Último upload: {last_uploaded}, Diferença: {time.time() - last_uploaded}")
 
             if torrent.name in torrent_message_ids:
-                if time.time() - last_uploaded > 5:  # segundos
+                if time.time() - last_uploaded > 15:  # segundos
                     message_id = torrent_message_ids[torrent.name]
                     print(f"Excluindo mensagem para o torrent {torrent.name} devido à inatividade de upload.")
                     if message_id:
@@ -197,20 +201,20 @@ async def monitor_torrents(context: CallbackContext):
                 uploaded=torrent.uploaded / (1024 ** 3)
             )
             await send_or_edit_message(context.bot, message, torrent.name)
-
         # Verificação de finalização de download
         if torrent.state == "stalledUP" and torrent.progress == 1.0:
             print(f"Download concluído para '{torrent.name}'. Iniciando compactação e envio.")
             await send_completed_torrent_parts(context, torrent.name, os.path.join(DOWNLOADS_PATH, torrent.name))
+
 
         # Armazena o tempo do último upload se há atividade de upload
         if torrent.upspeed > 0:
             print(f"Atualizando o tempo de upload ativo para '{torrent.name}'.")
             torrent_last_uploaded[torrent.name] = time.time()
 
-
 # Função para dividir e enviar arquivos compactados
 async def send_completed_torrent_parts(context, torrent_name, files_path):
+    part_pattern = None #Para função inteira ter acesso a variavel.
     try:
         # Cria uma pasta temporária para o torrent
         temp_folder = os.path.join("/tmp", torrent_name.replace(" ", "_"))
@@ -223,13 +227,24 @@ async def send_completed_torrent_parts(context, torrent_name, files_path):
                 shutil.copy2(original_path, temp_folder)
 
         # Compacta a pasta em partes de 2GB
-        archive_name = os.path.join("/tmp", f"{torrent_name.replace(' ', '_')}.tar.gz")
-        split_command = f"tar -czf - -C /tmp {torrent_name.replace(' ', '_')} | split -b 2G - {archive_name}.part"
-        subprocess.run(split_command, shell=True, check=True)
+        archive_name = os.path.join("/tmp", f"{torrent_name.replace(' ', '_')}")
+        print("Iniciando compactação em partes")
+
+        # Substituir o comando de split e tar por algo mais seguro
+        split_command = f"tar -czf - -C /tmp {torrent_name.replace(' ', '_')} | split -b 2GB - {archive_name}.part"
+
+        # Executar o comando com subprocess
+        process = subprocess.Popen(split_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
+        # Verifique se houve erros durante a execução do comando
+        if process.returncode != 0:
+            print(f"Erro ao executar o comando de compactação/divisão: {stderr.decode()}")
+            return
 
         # Envia cada parte para o canal no Telegram
-        part_num = 1
         part_pattern = f"{archive_name}.part*"
+        part_num = 1
         for part_file in sorted(glob.glob(part_pattern)):
             with open(part_file, "rb") as file_part:
                 await context.bot.send_document(chat_id=FILE_CHAT_ID, document=InputFile(file_part),
@@ -237,6 +252,7 @@ async def send_completed_torrent_parts(context, torrent_name, files_path):
             part_num += 1
 
         # Envia uma mensagem final de confirmação
+       
         await context.bot.send_message(chat_id=FILE_CHAT_ID,
                                        text=f"O torrent '{torrent_name}' foi compactado e enviado com sucesso.")
     except subprocess.CalledProcessError as e:
@@ -246,8 +262,9 @@ async def send_completed_torrent_parts(context, torrent_name, files_path):
     finally:
         # Remove arquivos temporários
         shutil.rmtree(temp_folder, ignore_errors=True)
-        for part_file in glob.glob(part_pattern):
-            os.remove(part_file)
+        if part_pattern:  # Verificar se part_pattern foi definido
+            for part_file in glob.glob(part_pattern):
+                os.remove(part_file)
 
 # Função principal que configura e inicia o bot
 def main():
@@ -257,4 +274,5 @@ def main():
     print("Bot iniciado.")
 
 if __name__ == "__main__":
+    print("Python iniciado.")
     main()

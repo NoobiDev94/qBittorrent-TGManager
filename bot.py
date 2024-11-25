@@ -220,11 +220,19 @@ async def send_completed_torrent_parts(context, torrent_name, files_path):
         temp_folder = os.path.join("/tmp", torrent_name.replace(" ", "_"))
         os.makedirs(temp_folder, exist_ok=True)
 
-        # Copia os arquivos para a pasta temporária
-        for file in os.listdir(files_path):
-            original_path = os.path.join(files_path, file)
-            if os.path.isfile(original_path):
-                shutil.copy2(original_path, temp_folder)
+        # Verifica se 'files_path' é um diretório ou arquivo
+        if os.path.isdir(files_path):
+            # Copia todos os arquivos de um diretório para a pasta temporária
+            for file in os.listdir(files_path):
+                original_path = os.path.join(files_path, file)
+                if os.path.isfile(original_path):
+                    shutil.copy2(original_path, temp_folder)
+        elif os.path.isfile(files_path):
+            # Se for um arquivo único, copia diretamente
+            shutil.copy2(files_path, temp_folder)
+        else:
+            print(f"Erro: {files_path} não é um arquivo nem um diretório válido.")
+            return
 
         # Compacta a pasta em partes de 2GB
         archive_name = os.path.join("/tmp", f"{torrent_name.replace(' ', '_')}")

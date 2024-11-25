@@ -239,7 +239,7 @@ async def send_completed_torrent_parts(context, torrent_name, files_path):
         print("Iniciando compactação em partes")
 
         # Substituir o comando de split e tar por algo mais seguro
-        split_command = f"tar -czf - -C /tmp {torrent_name.replace(' ', '_')} | split -b 2GB - {archive_name}.part"
+        split_command = f"tar -czf - -C /tmp {torrent_name.replace(' ', '_')} | split -b 50MB - {archive_name}.part"
 
         # Executar o comando com subprocess
         process = subprocess.Popen(split_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
